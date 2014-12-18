@@ -2715,7 +2715,8 @@ module.exports = {
         'htmltag',
         'links',
         'newline',
-        'text'
+        'text',
+        'rwref'
       ]
     }
   }
@@ -3314,6 +3315,7 @@ var _rules = [
   [ 'emphasis',        require('./rules_inline/emphasis') ],
   [ 'sub',             require('./rules_inline/sub') ],
   [ 'sup',             require('./rules_inline/sup') ],
+  [ 'rwref',           require('./rules_inline/rwref') ],
   [ 'links',           require('./rules_inline/links') ],
   [ 'footnote_inline', require('./rules_inline/footnote_inline') ],
   [ 'footnote_ref',    require('./rules_inline/footnote_ref') ],
@@ -3424,7 +3426,7 @@ ParserInline.prototype.parse = function (str, options, env, outTokens) {
 
 module.exports = ParserInline;
 
-},{"./common/utils":5,"./ruler":19,"./rules_inline/autolink":42,"./rules_inline/backticks":43,"./rules_inline/del":44,"./rules_inline/emphasis":45,"./rules_inline/entity":46,"./rules_inline/escape":47,"./rules_inline/footnote_inline":48,"./rules_inline/footnote_ref":49,"./rules_inline/htmltag":50,"./rules_inline/ins":51,"./rules_inline/links":52,"./rules_inline/mark":53,"./rules_inline/newline":54,"./rules_inline/state_inline":55,"./rules_inline/sub":56,"./rules_inline/sup":57,"./rules_inline/text":58}],18:[function(require,module,exports){
+},{"./common/utils":5,"./ruler":19,"./rules_inline/autolink":42,"./rules_inline/backticks":43,"./rules_inline/del":44,"./rules_inline/emphasis":45,"./rules_inline/entity":46,"./rules_inline/escape":47,"./rules_inline/footnote_inline":48,"./rules_inline/footnote_ref":49,"./rules_inline/htmltag":50,"./rules_inline/ins":51,"./rules_inline/links":52,"./rules_inline/mark":53,"./rules_inline/newline":54,"./rules_inline/rwref":55,"./rules_inline/state_inline":56,"./rules_inline/sub":57,"./rules_inline/sup":58,"./rules_inline/text":59}],18:[function(require,module,exports){
 'use strict';
 
 
@@ -3755,6 +3757,18 @@ rules.dt_close = function() {
 };
 rules.dd_close = function() {
   return '</dd>\n';
+};
+
+// ridewithgps rules
+// zack ham 12/18/14
+rules.rwref_open = function(tokens, idx) {
+  return '<a href="javascript:;" class="rwref rwref-' + 
+    escapeHtml(tokens[idx].rwrefType) + 
+    '" data-rwref_type="' + escapeHtml(tokens[idx].rwrefType) +
+    '" data-rwref_id="' + escapeHtml(tokens[idx].rwrefId) + '">';
+};
+rules.rwref_close = function () {
+  return '</a>';
 };
 
 
@@ -5489,7 +5503,7 @@ module.exports = function abbr(state) {
   }
 };
 
-},{"../helpers/parse_link_label":12,"../rules_inline/state_inline":55}],34:[function(require,module,exports){
+},{"../helpers/parse_link_label":12,"../rules_inline/state_inline":56}],34:[function(require,module,exports){
 // Enclose abbreviations in <abbr> tags
 //
 'use strict';
@@ -5873,7 +5887,7 @@ module.exports = function linkify(state) {
   }
 };
 
-},{"autolinker":59}],39:[function(require,module,exports){
+},{"autolinker":60}],39:[function(require,module,exports){
 'use strict';
 
 
@@ -5973,7 +5987,7 @@ module.exports = function references(state) {
   }
 };
 
-},{"../helpers/normalize_reference":10,"../helpers/parse_link_destination":11,"../helpers/parse_link_label":12,"../helpers/parse_link_title":13,"../rules_inline/state_inline":55}],40:[function(require,module,exports){
+},{"../helpers/normalize_reference":10,"../helpers/parse_link_destination":11,"../helpers/parse_link_label":12,"../helpers/parse_link_title":13,"../rules_inline/state_inline":56}],40:[function(require,module,exports){
 // Simple typographyc replacements
 //
 'use strict';
@@ -7179,6 +7193,86 @@ module.exports = function newline(state, silent) {
 };
 
 },{}],55:[function(require,module,exports){
+// process @refType[label](refId)
+// consider this an extended links rule.
+
+'use strict';
+
+var parseLinkLabel = require('../helpers/parse_link_label');
+var REFTYPE_RE = /^[a-z]{3,16}/;
+var REFID_RE = /^[^)]{0,255}/;
+
+module.exports = function rwref(state, silent) {
+  var labelStart,
+    labelEnd,
+    rwrefType,
+    rwrefId,
+    match,
+    pos = state.pos,
+    oldPos = state.pos,
+    max = state.posMax;
+
+  // @refType[label](refId)
+  // ^
+  if (state.src.charCodeAt(pos++) !== 0x40/* @ */) { return false; }
+
+  // @refType[label](refId)
+  //  ^^^^^^^
+  match = state.src.slice(pos).match(REFTYPE_RE);
+  if (!match) { return false; }
+  rwrefType = match[0];
+  pos += match[0].length;
+
+  // @refType[label](refId)
+  //         ^^^^^^^
+  if (state.src.charCodeAt(pos) !== 0x5B/* [ */) { return false; }
+  if (state.level >= state.options.maxNesting) { return false; }
+  labelStart = pos + 1;
+  labelEnd = parseLinkLabel(state, pos);
+  if (labelEnd < 0) { return false; }
+  pos = labelEnd + 1;
+  if (pos >= max || labelStart === labelEnd) { return false; }
+
+  // @refType[label](refId)
+  //                ^
+  if (state.src.charCodeAt(pos++) !== 0x28/* ( */) { return false; }
+
+  // @refType[label](refId)
+  //                 ^^^^^
+  match = state.src.slice(pos).match(REFID_RE);
+  if (!match) { return false; }
+  rwrefId = match[0];
+  pos += match[0].length;
+
+  // @refType[label](refId)
+  //                      ^
+  if (pos >= max || state.src.charCodeAt(pos++) !== 0x29/* ) */) {
+    state.pos = oldPos;
+    return false;
+  }
+
+  // tokenize.
+  if (!silent) {
+    state.pos = labelStart;
+    state.posMax = labelEnd;
+    state.push({
+      type: 'rwref_open',
+      rwrefType: rwrefType,
+      rwrefId: rwrefId,
+      level: state.level++
+    });
+    state.linkLevel++;
+    state.parser.tokenize(state);
+    state.linkLevel--;
+    state.push({ type: 'rwref_close', level: --state.level });
+  }
+
+  state.pos = pos;
+  state.posMax = max;
+  return true;
+};
+
+},{"../helpers/parse_link_label":12}],56:[function(require,module,exports){
 // Inline parser state
 
 'use strict';
@@ -7262,7 +7356,7 @@ StateInline.prototype.cacheGet = function (key) {
 
 module.exports = StateInline;
 
-},{}],56:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 // Process ~subscript~
 
 'use strict';
@@ -7322,7 +7416,7 @@ module.exports = function sub(state, silent) {
   return true;
 };
 
-},{}],57:[function(require,module,exports){
+},{}],58:[function(require,module,exports){
 // Process ^superscript^
 
 'use strict';
@@ -7382,7 +7476,7 @@ module.exports = function sup(state, silent) {
   return true;
 };
 
-},{}],58:[function(require,module,exports){
+},{}],59:[function(require,module,exports){
 // Skip text characters for text token, place those to pending buffer
 // and increment current pos
 
@@ -7437,7 +7531,7 @@ module.exports = function text(state, silent) {
   return true;
 };
 
-},{}],59:[function(require,module,exports){
+},{}],60:[function(require,module,exports){
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD. Register as an anonymous module.
