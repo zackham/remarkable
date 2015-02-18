@@ -3572,7 +3572,7 @@ rules.paragraph_close = function (tokens, idx /*, options, env */) {
 
 rules.link_open = function (tokens, idx /*, options, env */) {
   var title = tokens[idx].title ? (' title="' + escapeHtml(replaceEntities(tokens[idx].title)) + '"') : '';
-  return '<a href="' + escapeHtml(tokens[idx].href) + '"' + title + '>';
+  return '<a href="' + escapeHtml(tokens[idx].href) + '"' + title + ' target="_blank">';
 };
 rules.link_close = function (/* tokens, idx, options, env */) {
   return '</a>';
@@ -3762,8 +3762,8 @@ rules.dd_close = function() {
 // ridewithgps rules
 // zack ham 12/18/14
 rules.rwref_open = function(tokens, idx) {
-  return '<a href="javascript:;" class="rwref rwref-' + 
-    escapeHtml(tokens[idx].rwrefType) + 
+  return '<a href="javascript:;" class="rwref rwref-' +
+    escapeHtml(tokens[idx].rwrefType) +
     '" data-rwref_type="' + escapeHtml(tokens[idx].rwrefType) +
     '" data-rwref_id="' + escapeHtml(tokens[idx].rwrefId) + '">';
 };
